@@ -1,3 +1,4 @@
+import { supabase } from "@/supabase";
 import { useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
