@@ -1,39 +1,70 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { taskRepository } from "@/lib/tasks/repository";
-import type { TaskInput, TaskStatus } from "@/lib/tasks/types";
-
-export const tasksQueryOptions = {
-  queryKey: ["tasks"] as const,
-  queryFn: () => taskRepository.list(),
-};
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/supabase";
+import type { Task, TaskInput, TaskStatus } from "@/lib/tasks/types";
 
 export function useTasks() {
-  const qc = useQueryClient();
-  const invalidate = () => qc.invalidateQueries({ queryKey: ["tasks"] });
+  const queryClient = useQueryClient();
 
-  const query = useQuery(tasksQueryOptions);
+  const { data: tasks = [], isLoading } = useQuery({
+    queryKey: ["tasks"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("tasks")
+        .select("*")
+        .order("position", { ascending: true });
+      if (error) throw error;
+      return data as Task[];
+    },
+  });
 
   const create = useMutation({
-    mutationFn: (input: TaskInput) => taskRepository.create(input),
-    onSuccess: invalidate,
+    mutationFn: async (input: TaskInput) => {
+      const { data, error } = await supabase
+        .from("tasks")
+        .insert([input])
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["tasks"] }),
   });
 
   const update = useMutation({
-    mutationFn: ({ id, patch }: { id: string; patch: Partial<TaskInput> }) =>
-      taskRepository.update(id, patch),
-    onSuccess: invalidate,
+    mutationFn: async ({ id, patch }: { id: string; patch: Partial<TaskInput> }) => {
+      const { data, error } = await supabase
+        .from("tasks")
+        .update(patch)
+        .eq("id", id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["tasks"] }),
   });
 
   const move = useMutation({
-    mutationFn: ({ id, status, position }: { id: string; status: TaskStatus; position: number }) =>
-      taskRepository.move(id, status, position),
-    onSuccess: invalidate,
+    mutationFn: async ({ id, status, position }: { id: string; status: TaskStatus; position: number }) => {
+      const { data, error } = await supabase
+        .from("tasks")
+        .update({ status, position })
+        .eq("id", id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["tasks"] }),
   });
 
   const remove = useMutation({
-    mutationFn: (id: string) => taskRepository.remove(id),
-    onSuccess: invalidate,
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("tasks").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["tasks"] }),
   });
 
-  return { tasks: query.data ?? [], isLoading: query.isLoading, create, update, move, remove };
+  return { tasks, isLoading, create, update, move, remove };
 }
